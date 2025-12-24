@@ -115,6 +115,119 @@ class PDFBoxReplacer:
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
         
+        css_path = os.path.join(output_dir, "style.css")
+        
+        css = """
+            body {{
+                font-family: Arial, sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                line-height: 1.6;
+                background-color: #f5f5f5;
+            }}
+            .header {{
+                background-color: #2c3e50;
+                color: white;
+                padding: 20px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }}
+            .warning {{
+                background-color: #fff3cd;
+                border: 1px solid #ffeaa7;
+                color: #856404;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }}
+            .page {{
+                background-color: white;
+                padding: 20px;
+                margin-bottom: 30px;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                page-break-inside: avoid;
+            }}
+            .page-header {{
+                background-color: #3498db;
+                color: white;
+                padding: 10px 15px;
+                margin: -20px -20px 20px -20px;
+                border-radius: 5px 5px 0 0;
+                font-weight: bold;
+            }}
+            .page-content {{
+                white-space: pre-wrap;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+                line-height: 1.4;
+            }}
+            .navigation {{
+                margin-top: 30px;
+                margin-bottom: 30px;
+            }}
+            .nav-buttons {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }}
+            .nav-button {{
+                padding: 10px 20px;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: bold;
+                transition: background-color 0.3s;
+            }}
+            .nav-button.prev {{
+                background-color: #3498db;
+                color: white;
+            }}
+            .nav-button.prev:hover {{
+                background-color: #2980b9;
+            }}
+            .nav-button.home {{
+                background-color: #2c3e50;
+                color: white;
+            }}
+            .nav-button.home:hover {{
+                background-color: #34495e;
+            }}
+            .nav-button.next {{
+                background-color: #27ae60;
+                color: white;
+            }}
+            .nav-button.next:hover {{
+                background-color: #229954;
+            }}
+            .nav-button.disabled {{
+                background-color: #cccccc;
+                color: #666666;
+                cursor: not-allowed;
+            }}
+            .file-info {{
+                background-color: #e8f4fc;
+                padding: 10px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                font-size: 14px;
+            }}
+            .sequence-info {{
+                background-color: #e8f4fc;
+                padding: 10px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                font-size: 14px;
+                border-left: 4px solid #3498db;
+            }}
+            """
+        css = css.replace("{{","{").replace("}}","}")
+            
+        with open(css_path, "w") as cssfile:
+            cssfile.seek(0)
+            cssfile.write(css)
+            cssfile.close()
+        
         # Find all PDF files recursively
         pdf_files = []
         for root_dir, dirs, files in os.walk(input_dir):
@@ -311,110 +424,7 @@ HTML files saved to: {output_dir}
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Extracted Text: {html.escape(pdf_name)}</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-                line-height: 1.6;
-                background-color: #f5f5f5;
-            }}
-            .header {{
-                background-color: #2c3e50;
-                color: white;
-                padding: 20px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-            }}
-            .warning {{
-                background-color: #fff3cd;
-                border: 1px solid #ffeaa7;
-                color: #856404;
-                padding: 15px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-            }}
-            .page {{
-                background-color: white;
-                padding: 20px;
-                margin-bottom: 30px;
-                border-radius: 5px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                page-break-inside: avoid;
-            }}
-            .page-header {{
-                background-color: #3498db;
-                color: white;
-                padding: 10px 15px;
-                margin: -20px -20px 20px -20px;
-                border-radius: 5px 5px 0 0;
-                font-weight: bold;
-            }}
-            .page-content {{
-                white-space: pre-wrap;
-                font-family: 'Courier New', monospace;
-                font-size: 12px;
-                line-height: 1.4;
-            }}
-            .navigation {{
-                margin-top: 30px;
-                margin-bottom: 30px;
-            }}
-            .nav-buttons {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }}
-            .nav-button {{
-                padding: 10px 20px;
-                text-decoration: none;
-                border-radius: 5px;
-                font-weight: bold;
-                transition: background-color 0.3s;
-            }}
-            .nav-button.prev {{
-                background-color: #3498db;
-                color: white;
-            }}
-            .nav-button.prev:hover {{
-                background-color: #2980b9;
-            }}
-            .nav-button.home {{
-                background-color: #2c3e50;
-                color: white;
-            }}
-            .nav-button.home:hover {{
-                background-color: #34495e;
-            }}
-            .nav-button.next {{
-                background-color: #27ae60;
-                color: white;
-            }}
-            .nav-button.next:hover {{
-                background-color: #229954;
-            }}
-            .nav-button.disabled {{
-                background-color: #cccccc;
-                color: #666666;
-                cursor: not-allowed;
-            }}
-            .file-info {{
-                background-color: #e8f4fc;
-                padding: 10px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-                font-size: 14px;
-            }}
-            .sequence-info {{
-                background-color: #e8f4fc;
-                padding: 10px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-                font-size: 14px;
-                border-left: 4px solid #3498db;
-            }}
-        </style>
+        <link rel="stylesheet" type="text/css" href="style.css">
     </head>
     <body>
         <div class="header">
