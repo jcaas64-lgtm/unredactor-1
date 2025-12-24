@@ -51,6 +51,8 @@ class PDFBoxReplacer:
         
         tk.Button(toolbar, text="Replace Boxes", command=self.replace_boxes, 
                  bg="green", fg="white").pack(side=tk.RIGHT, padx=2)
+        tk.Button(toolbar, text="Unredact All", command=self.unredact_all, 
+                 bg="red", fg="white").pack(side=tk.RIGHT, padx=2)
         
         # Canvas for PDF display
         canvas_frame = tk.Frame(self.root)
@@ -85,6 +87,101 @@ class PDFBoxReplacer:
                                      bd=1, relief=tk.SUNKEN, anchor=tk.W)
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
+    def unredact_all(self):
+        """Extract all text from the document (useful for poorly redacted PDFs)"""
+        if not self.pdf_doc:
+            messagebox.showwarning("Warning", "No PDF loaded")
+            return
+        
+        results_by_page = {}
+        
+        # Scan all pages
+        for page_num in range(len(self.pdf_doc)):
+            page = self.pdf_doc[page_num]
+            
+            # Simply extract ALL text from the page
+            text = page.get_text()
+            
+            if text.strip():
+                results_by_page[page_num + 1] = text.strip()
+        
+        # Display results
+        self.show_unredacted_results(results_by_page)
+
+    def show_unredacted_results(self, results_by_page):
+        """Show extracted text in a new window"""
+        result_window = tk.Toplevel(self.root)
+        result_window.title("Extracted Text (Including Under Redactions)")
+        result_window.geometry("900x700")
+        
+        # Add text widget with scrollbar
+        text_frame = tk.Frame(result_window)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        text_widget = tk.Text(text_frame, wrap=tk.WORD, yscrollcommand=scrollbar.set, font=("Courier", 9))
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=text_widget.yview)
+        
+        # Format and display results
+        if results_by_page:
+            text_widget.insert(tk.END, f"Extracted text from {len(results_by_page)} pages\n")
+            text_widget.insert(tk.END, "="*80 + "\n\n")
+            
+            for page_num in sorted(results_by_page.keys()):
+                text_widget.insert(tk.END, f"PAGE {page_num}:\n")
+                text_widget.insert(tk.END, "-"*80 + "\n")
+                text_widget.insert(tk.END, results_by_page[page_num])
+                text_widget.insert(tk.END, "\n\n")
+        else:
+            text_widget.insert(tk.END, "No text found in document.")
+        
+        text_widget.config(state=tk.DISABLED)
+        
+        # Add copy all and export buttons
+        button_frame = tk.Frame(result_window)
+        button_frame.pack(pady=5)
+        
+        tk.Button(button_frame, text="Copy All to Clipboard", 
+                 command=lambda: self.copy_to_clipboard(results_by_page)).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Export to File", 
+                 command=lambda: self.export_results(results_by_page)).pack(side=tk.LEFT, padx=5)
+
+    def copy_to_clipboard(self, results_by_page):
+        """Copy all extracted text to clipboard"""
+        all_text = ""
+        for page_num in sorted(results_by_page.keys()):
+            all_text += f"PAGE {page_num}:\n"
+            all_text += "-"*80 + "\n"
+            all_text += results_by_page[page_num]
+            all_text += "\n\n"
+        
+        self.root.clipboard_clear()
+        self.root.clipboard_append(all_text)
+        messagebox.showinfo("Success", "All text copied to clipboard!")
+
+    def export_results(self, results_by_page):
+        """Export extracted text to a file"""
+        filepath = filedialog.asksaveasfilename(
+            title="Export extracted text",
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        
+        if filepath:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(f"Extracted Text Report - {len(results_by_page)} pages\n")
+                f.write("="*80 + "\n\n")
+                
+                for page_num in sorted(results_by_page.keys()):
+                    f.write(f"PAGE {page_num}:\n")
+                    f.write("-"*80 + "\n")
+                    f.write(results_by_page[page_num])
+                    f.write("\n\n")
+            
+            messagebox.showinfo("Success", f"Exported to {filepath}")
     def on_mousewheel(self, event):
         """Handle mouse wheel zoom with Ctrl held"""
         if event.state & 0x0004:  # Ctrl key is held
