@@ -236,121 +236,264 @@ HTML files saved to: {output_dir}
         return text_by_page, ocr_mode
 
     def create_html_from_text(self, pdf_path, text_by_page, ocr_mode, output_dir):
-        """Create an HTML file from extracted text"""
+        """Create an HTML file from extracted text with Next/Previous navigation"""
         pdf_name = os.path.basename(pdf_path)
         html_name = os.path.splitext(pdf_name)[0] + ".html"
         html_path = os.path.join(output_dir, html_name)
         
+        # Parse the filename to extract prefix and number
+        base_name = os.path.splitext(pdf_name)[0]
+        
+        # Find the split between letters and numbers
+        split_index = len(base_name)
+        for i, char in enumerate(base_name):
+            if char.isdigit():
+                split_index = i
+                break
+        
+        prefix = base_name[:split_index] if split_index > 0 else ""
+        number_str = base_name[split_index:] if split_index < len(base_name) else ""
+        
+        # Generate Next and Previous links
+        prev_link = None
+        next_link = None
+        
+        if number_str and number_str.isdigit():
+            # Count leading zeros in the number part
+            leading_zeros = ""
+            for char in number_str:
+                if char == '0':
+                    leading_zeros += '0'
+                else:
+                    break
+            
+            current_num = int(number_str)
+            total_digits = len(number_str)
+            
+            # Previous file (current - 1)
+            if current_num > 0:
+                prev_num = current_num - 1
+                # Preserve the same number of digits with leading zeros
+                prev_num_str = str(prev_num).zfill(total_digits)
+                prev_filename = f"{prefix}{prev_num_str}.html"
+                # Check if the file exists in output directory
+                prev_path = os.path.join(output_dir, prev_filename)
+                if os.path.exists(prev_path):
+                    prev_link = prev_filename
+            
+            # Next file (current + 1)
+            next_num = current_num + 1
+            # Preserve the same number of digits with leading zeros
+            next_num_str = str(next_num).zfill(total_digits)
+            next_filename = f"{prefix}{next_num_str}.html"
+            # Check if the file exists in output directory
+            next_path = os.path.join(output_dir, next_filename)
+            if os.path.exists(next_path):
+                next_link = next_filename
+        
+        # Create navigation buttons HTML
+        nav_html = ""
+        if prev_link or next_link:
+            nav_html = """
+        <div class="navigation">
+            <div class="nav-buttons">
+    """
+            if prev_link:
+                nav_html += f"""            <a href="{html.escape(prev_link)}" class="nav-button prev">← Previous File</a>
+    """
+            
+            nav_html += f"""            <a href="index.html" class="nav-button home">Index</a>
+    """
+            
+            if next_link:
+                nav_html += f"""            <a href="{html.escape(next_link)}" class="nav-button next">Next File →</a>
+    """
+            
+            nav_html += """        </div>
+        </div>
+    """
+        
         # Create HTML content
         html_content = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extracted Text: {html.escape(pdf_name)}</title>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            background-color: #f5f5f5;
-        }}
-        .header {{
-            background-color: #2c3e50;
-            color: white;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }}
-        .warning {{
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }}
-        .page {{
-            background-color: white;
-            padding: 20px;
-            margin-bottom: 30px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            page-break-inside: avoid;
-        }}
-        .page-header {{
-            background-color: #3498db;
-            color: white;
-            padding: 10px 15px;
-            margin: -20px -20px 20px -20px;
-            border-radius: 5px 5px 0 0;
-            font-weight: bold;
-        }}
-        .page-content {{
-            white-space: pre-wrap;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.4;
-        }}
-        .back-link {{
-            display: inline-block;
-            margin-top: 20px;
-            padding: 10px 15px;
-            background-color: #2c3e50;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-        }}
-        .back-link:hover {{
-            background-color: #34495e;
-        }}
-        .file-info {{
-            background-color: #e8f4fc;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Extracted Text: {html.escape(pdf_name)}</h1>
-        <p>Original PDF: {html.escape(pdf_path)}</p>
-        <p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-    </div>
-    
-    <div class="file-info">
-        <p><strong>Source:</strong> {html.escape(pdf_path)}</p>
-        <p><strong>Pages:</strong> {len(text_by_page)}</p>
-        <p><strong>Extraction Method:</strong> {"OCR (Image-based extraction)" if ocr_mode else "Text layer extraction"}</p>
-    </div>
-"""
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Extracted Text: {html.escape(pdf_name)}</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                line-height: 1.6;
+                background-color: #f5f5f5;
+            }}
+            .header {{
+                background-color: #2c3e50;
+                color: white;
+                padding: 20px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                position: relative;
+            }}
+            .file-number {{
+                position: absolute;
+                top: 20px;
+                right: 20px;
+                font-size: 24px;
+                font-weight: bold;
+                color: #3498db;
+            }}
+            .warning {{
+                background-color: #fff3cd;
+                border: 1px solid #ffeaa7;
+                color: #856404;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }}
+            .page {{
+                background-color: white;
+                padding: 20px;
+                margin-bottom: 30px;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                page-break-inside: avoid;
+            }}
+            .page-header {{
+                background-color: #3498db;
+                color: white;
+                padding: 10px 15px;
+                margin: -20px -20px 20px -20px;
+                border-radius: 5px 5px 0 0;
+                font-weight: bold;
+            }}
+            .page-content {{
+                white-space: pre-wrap;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+                line-height: 1.4;
+            }}
+            .navigation {{
+                margin-top: 30px;
+                margin-bottom: 20px;
+            }}
+            .nav-buttons {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }}
+            .nav-button {{
+                padding: 10px 20px;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: bold;
+                transition: background-color 0.3s;
+            }}
+            .nav-button.prev {{
+                background-color: #3498db;
+                color: white;
+            }}
+            .nav-button.prev:hover {{
+                background-color: #2980b9;
+            }}
+            .nav-button.home {{
+                background-color: #2c3e50;
+                color: white;
+            }}
+            .nav-button.home:hover {{
+                background-color: #34495e;
+            }}
+            .nav-button.next {{
+                background-color: #27ae60;
+                color: white;
+            }}
+            .nav-button.next:hover {{
+                background-color: #229954;
+            }}
+            .file-info {{
+                background-color: #e8f4fc;
+                padding: 10px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                font-size: 14px;
+            }}
+            .sequence-info {{
+                background-color: #e8f4fc;
+                padding: 10px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                font-size: 14px;
+                border-left: 4px solid #3498db;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>Extracted Text: {html.escape(pdf_name)}</h1>
+            <p>Original PDF: {html.escape(pdf_path)}</p>
+            <p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <div class="file-number">{html.escape(base_name)}</div>
+        </div>
+        
+        <div class="file-info">
+            <p><strong>Source:</strong> {html.escape(pdf_path)}</p>
+            <p><strong>Pages:</strong> {len(text_by_page)}</p>
+            <p><strong>Extraction Method:</strong> {"OCR (Image-based extraction)" if ocr_mode else "Text layer extraction"}</p>
+        </div>
+        
+        <div class="sequence-info">
+            <p><strong>File Sequence:</strong> {html.escape(prefix)}{'N/A' if not number_str else html.escape(number_str)}</p>
+            <p><strong>File Format:</strong> {html.escape(prefix)} followed by {len(number_str) if number_str else 0} digits ({len(leading_zeros) if number_str else 0} leading zeros)</p>
+        </div>
+    """
         
         if ocr_mode:
             html_content += """
-    <div class="warning">
-        <strong>⚠️ WARNING:</strong> This PDF has no text stream - using OCR (may have errors).
-        The PDF was converted to images, likely to hide the text layer.
-    </div>
-"""
+        <div class="warning">
+            <strong>⚠️ WARNING:</strong> This PDF has no text stream - using OCR (may have errors).
+            The PDF was converted to images, likely to hide the text layer.
+        </div>
+    """
         
         # Add each page
         for page_num in sorted(text_by_page.keys()):
             escaped_text = html.escape(text_by_page[page_num])
             html_content += f"""
-    <div class="page">
-        <div class="page-header">Page {page_num}</div>
-        <div class="page-content">{escaped_text}</div>
-    </div>
-"""
+        <div class="page">
+            <div class="page-header">Page {page_num}</div>
+            <div class="page-content">{escaped_text}</div>
+        </div>
+    """
+        
+        # Add navigation
+        html_content += nav_html
+        
+        # Footer navigation (duplicate for convenience)
+        if prev_link or next_link:
+            html_content += """
+        <div class="navigation">
+            <div class="nav-buttons">
+    """
+            if prev_link:
+                html_content += f"""            <a href="{html.escape(prev_link)}" class="nav-button prev">← Previous File</a>
+    """
+            
+            html_content += f"""            <a href="index.html" class="nav-button home">Index</a>
+    """
+            
+            if next_link:
+                html_content += f"""            <a href="{html.escape(next_link)}" class="nav-button next">Next File →</a>
+    """
+            
+            html_content += """        </div>
+        </div>
+    """
         
         html_content += """
-    <a href="index.html" class="back-link">← Back to Index</a>
-</body>
-</html>"""
+    </body>
+    </html>"""
         
         # Write HTML file
         with open(html_path, 'w', encoding='utf-8') as f:
@@ -358,138 +501,248 @@ HTML files saved to: {output_dir}
         
         return html_path
 
+
     def create_index_html(self, html_files, output_dir, processed_count, error_count):
-        """Create an index.html file linking to all HTML files"""
+        """Create an index.html file linking to all HTML files with sequence information"""
         index_path = os.path.join(output_dir, "index.html")
         
-        # Sort HTML files alphabetically
-        html_files.sort()
+        # Sort HTML files by their numerical sequence
+        def get_sequence_key(filename):
+            base_name = os.path.splitext(filename)[0]
+            
+            # Find the split between letters and numbers
+            split_index = len(base_name)
+            for i, char in enumerate(base_name):
+                if char.isdigit():
+                    split_index = i
+                    break
+            
+            prefix = base_name[:split_index] if split_index > 0 else ""
+            number_str = base_name[split_index:] if split_index < len(base_name) else ""
+            
+            if number_str.isdigit():
+                return (prefix, int(number_str))
+            return (base_name, 0)
+        
+        html_files.sort(key=lambda x: get_sequence_key(os.path.basename(x)))
+        
+        # Group files by prefix
+        file_groups = {}
+        for html_file in html_files:
+            filename = os.path.basename(html_file)
+            base_name = os.path.splitext(filename)[0]
+            
+            # Find the split between letters and numbers
+            split_index = len(base_name)
+            for i, char in enumerate(base_name):
+                if char.isdigit():
+                    split_index = i
+                    break
+            
+            prefix = base_name[:split_index] if split_index > 0 else "Other"
+            
+            if prefix not in file_groups:
+                file_groups[prefix] = []
+            file_groups[prefix].append({
+                'filename': filename,
+                'path': html_file,
+                'basename': base_name
+            })
         
         # Create index HTML
         html_content = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extracted PDF Text - Index</title>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            background-color: #f5f5f5;
-        }}
-        .header {{
-            background-color: #2c3e50;
-            color: white;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }}
-        .stats {{
-            background-color: #e8f4fc;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            flex-wrap: wrap;
-        }}
-        .stat-box {{
-            background-color: white;
-            padding: 10px 20px;
-            border-radius: 5px;
-            margin: 5px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        .file-list {{
-            background-color: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }}
-        .file-item {{
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }}
-        .file-item:last-child {{
-            border-bottom: none;
-        }}
-        .file-item:hover {{
-            background-color: #f8f9fa;
-        }}
-        .file-name {{
-            font-weight: bold;
-            color: #2c3e50;
-        }}
-        .view-link {{
-            background-color: #3498db;
-            color: white;
-            padding: 5px 10px;
-            text-decoration: none;
-            border-radius: 3px;
-            font-size: 14px;
-        }}
-        .view-link:hover {{
-            background-color: #2980b9;
-        }}
-        .timestamp {{
-            color: #666;
-            font-size: 12px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Extracted PDF Text - Index</h1>
-        <p>Browse all extracted text from PDF files</p>
-    </div>
-    
-    <div class="stats">
-        <div class="stat-box">
-            <strong>Total Files:</strong> {len(html_files)}
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Extracted PDF Text - Index</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                line-height: 1.6;
+                background-color: #f5f5f5;
+            }}
+            .header {{
+                background-color: #2c3e50;
+                color: white;
+                padding: 20px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }}
+            .stats {{
+                background-color: #e8f4fc;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                display: flex;
+                justify-content: space-between;
+                flex-wrap: wrap;
+            }}
+            .stat-box {{
+                background-color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+                margin: 5px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }}
+            .group {{
+                background-color: white;
+                padding: 20px;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                margin-bottom: 30px;
+            }}
+            .group-header {{
+                background-color: #3498db;
+                color: white;
+                padding: 10px 15px;
+                margin: -20px -20px 20px -20px;
+                border-radius: 5px 5px 0 0;
+                font-weight: bold;
+                font-size: 18px;
+            }}
+            .file-list {{
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                gap: 15px;
+            }}
+            .file-item {{
+                padding: 15px;
+                border: 1px solid #eee;
+                border-radius: 5px;
+                background-color: #f8f9fa;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }}
+            .file-item:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                background-color: #e8f4fc;
+            }}
+            .file-name {{
+                font-weight: bold;
+                color: #2c3e50;
+                font-size: 16px;
+                margin-bottom: 5px;
+            }}
+            .view-link {{
+                display: inline-block;
+                background-color: #27ae60;
+                color: white;
+                padding: 8px 15px;
+                text-decoration: none;
+                border-radius: 3px;
+                font-size: 14px;
+                margin-top: 10px;
+            }}
+            .view-link:hover {{
+                background-color: #229954;
+            }}
+            .timestamp {{
+                color: #666;
+                font-size: 12px;
+            }}
+            .sequence-nav {{
+                display: flex;
+                justify-content: space-between;
+                margin-top: 15px;
+                font-size: 12px;
+                color: #666;
+            }}
+            .nav-hint {{
+                background-color: #f8f9fa;
+                padding: 10px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+                border-left: 4px solid #27ae60;
+                font-size: 14px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>Extracted PDF Text - Index</h1>
+            <p>Browse all extracted text from PDF files with sequential navigation</p>
         </div>
-        <div class="stat-box">
-            <strong>Successfully Processed:</strong> {processed_count}
-        </div>
-        <div class="stat-box">
-            <strong>Failed:</strong> {error_count}
-        </div>
-        <div class="stat-box">
-            <strong>Generated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-        </div>
-    </div>
-    
-    <div class="file-list">
-        <h2>Extracted Files ({len(html_files)} files)</h2>
-"""
         
-        for i, html_file in enumerate(html_files):
-            file_name = os.path.basename(html_file)
-            file_size = os.path.getsize(html_file)
-            modified_time = datetime.fromtimestamp(os.path.getmtime(html_file)).strftime('%Y-%m-%d %H:%M')
+        <div class="stats">
+            <div class="stat-box">
+                <strong>Total Files:</strong> {len(html_files)}
+            </div>
+            <div class="stat-box">
+                <strong>Successfully Processed:</strong> {processed_count}
+            </div>
+            <div class="stat-box">
+                <strong>Failed:</strong> {error_count}
+            </div>
+            <div class="stat-box">
+                <strong>File Groups:</strong> {len(file_groups)}
+            </div>
+            <div class="stat-box">
+                <strong>Generated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            </div>
+        </div>
+        
+        <div class="nav-hint">
+            <strong>💡 Navigation Tip:</strong> In individual file views, use the Previous/Next buttons at the top and bottom to navigate through sequential files. Files are automatically linked by their numerical sequence (e.g., EFTA0000000001 → EFTA0000000002).
+        </div>
+    """
+        
+        # Add each group
+        for prefix, files in sorted(file_groups.items()):
+            # Sort files within group by their numerical value
+            files.sort(key=lambda x: get_sequence_key(x['filename'])[1])
             
             html_content += f"""
-        <div class="file-item">
-            <div>
-                <span class="file-name">{html.escape(file_name)}</span>
-                <div class="timestamp">
-                    Size: {file_size:,} bytes | Modified: {modified_time}
+        <div class="group">
+            <div class="group-header">File Group: {html.escape(prefix)} ({len(files)} files)</div>
+            <div class="file-list">
+    """
+            
+            for i, file_info in enumerate(files):
+                file_name = file_info['filename']
+                file_size = os.path.getsize(file_info['path'])
+                modified_time = datetime.fromtimestamp(os.path.getmtime(file_info['path'])).strftime('%Y-%m-%d %H:%M')
+                
+                # Determine next/previous in sequence for this group
+                prev_in_group = files[i-1]['filename'] if i > 0 else None
+                next_in_group = files[i+1]['filename'] if i < len(files)-1 else None
+                
+                html_content += f"""
+                <div class="file-item">
+                    <div class="file-name">{html.escape(file_name)}</div>
+                    <div class="timestamp">
+                        Size: {file_size:,} bytes<br>
+                        Modified: {modified_time}
+                    </div>
+    """
+                
+                if prev_in_group or next_in_group:
+                    html_content += f"""                <div class="sequence-nav">
+    """
+                    if prev_in_group:
+                        html_content += f"""                    <span>← {html.escape(prev_in_group)}</span>
+    """
+                    if next_in_group:
+                        html_content += f"""                    <span>{html.escape(next_in_group)} →</span>
+    """
+                    html_content += """                </div>
+    """
+                
+                html_content += f"""                <a href="{html.escape(file_name)}" class="view-link">View Extracted Text</a>
                 </div>
+    """
+            
+            html_content += """
             </div>
-            <a href="{html.escape(file_name)}" class="view-link">View Extracted Text</a>
         </div>
-"""
+    """
         
         html_content += """
-    </div>
-</body>
-</html>"""
+    </body>
+    </html>"""
         
         # Write index file
         with open(index_path, 'w', encoding='utf-8') as f:
