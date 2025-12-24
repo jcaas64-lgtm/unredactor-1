@@ -6,11 +6,13 @@ Requirements:
     pip install PyMuPDF pillow
 """
 
-import pymupdf as fitz
-from PIL import Image, ImageTk
+import fitz  # PyMuPDF
+from PIL import Image, ImageTk, ImageDraw
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 import io
+import cv2
+import numpy as np
 
 class PDFBoxReplacer:
     def __init__(self, root):
@@ -32,6 +34,7 @@ class PDFBoxReplacer:
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
         
         tk.Button(toolbar, text="Open PDF", command=self.open_pdf).pack(side=tk.LEFT, padx=2)
+        tk.Button(toolbar, text="Save PDF", command=self.save_pdf).pack(side=tk.LEFT, padx=2)
         tk.Button(toolbar, text="Previous Page", command=self.prev_page).pack(side=tk.LEFT, padx=2)
         tk.Button(toolbar, text="Next Page", command=self.next_page).pack(side=tk.LEFT, padx=2)
         
@@ -80,6 +83,25 @@ class PDFBoxReplacer:
                 self.load_page()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to open PDF: {str(e)}")
+
+    def save_pdf(self):
+        """Save the modified PDF"""
+        if not self.pdf_doc:
+            messagebox.showwarning("Warning", "No PDF loaded")
+            return
+        
+        output_path = filedialog.asksaveasfilename(
+            title="Save modified PDF as",
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+        )
+        
+        if output_path:
+            try:
+                self.pdf_doc.save(output_path)
+                messagebox.showinfo("Success", f"Saved to: {output_path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save: {str(e)}")
     
     def load_page(self):
         if not self.pdf_doc:
@@ -110,26 +132,50 @@ class PDFBoxReplacer:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
     
     def find_boxes_on_page(self, page):
-        """Find all filled rectangles (potential black boxes) on the page"""
+        """Find all black rectangles on the page using image processing"""
         self.all_boxes = []
-        drawings = page.get_drawings()
         
-        for drawing in drawings:
-            if drawing["type"] == "f":  # filled path
-                rect = drawing["rect"]
-                # Check if it's roughly rectangular and dark colored
-                if rect.width > 5 and rect.height > 5:
-                    # Get fill color if available
-                    fill_color = drawing.get("fill", [0, 0, 0])
-                    # Consider it a "black box" if it's dark (all components < 0.3)
-                    if all(c < 0.3 for c in fill_color):
-                        self.all_boxes.append({
-                            "rect": rect,
-                            "width": round(rect.width, 1),
-                            "height": round(rect.height, 1),
-                            "page": self.current_page
-                        })
-    
+        # Render page to image
+        mat = fitz.Matrix(2, 2)  # Higher resolution for better detection
+        pix = page.get_pixmap(matrix=mat)
+        img_data = pix.tobytes("png")
+        
+        # Convert to OpenCV format
+        nparr = np.frombuffer(img_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Threshold to find black regions
+        _, thresh = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY_INV)
+        
+        # Find contours
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Filter for rectangular regions
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            
+            # Filter out very small or very large boxes
+            if w > 20 and h > 10 and w < pix.width * 0.8 and h < pix.height * 0.8:
+                # Convert back to PDF coordinates (accounting for 2x scaling)
+                pdf_x0 = x / 2
+                pdf_y0 = y / 2
+                pdf_x1 = (x + w) / 2
+                pdf_y1 = (y + h) / 2
+                
+                rect = fitz.Rect(pdf_x0, pdf_y0, pdf_x1, pdf_y1)
+                
+                self.all_boxes.append({
+                    "rect": rect,
+                    "width": round(rect.width, 1),
+                    "height": round(rect.height, 1),
+                    "page": self.current_page
+                })
+        
+        print(f"Found {len(self.all_boxes)} boxes using image processing")
+        for i, box in enumerate(self.all_boxes):
+            print(f"  Box {i}: {box['width']}x{box['height']} at ({box['rect'].x0:.1f}, {box['rect'].y0:.1f})")
+                    
     def draw_boxes(self):
         """Draw rectangles on canvas to show detected boxes"""
         for i, box in enumerate(self.all_boxes):
@@ -154,6 +200,7 @@ class PDFBoxReplacer:
     def on_canvas_click(self, event):
         """Handle click on canvas to select a box"""
         if not self.all_boxes:
+            self.status_label.config(text="No boxes found on this page")
             return
         
         # Convert canvas coordinates to PDF coordinates
@@ -162,11 +209,20 @@ class PDFBoxReplacer:
         pdf_x = canvas_x / self.zoom
         pdf_y = canvas_y / self.zoom
         
+        print(f"Click at canvas: ({event.x}, {event.y})")
+        print(f"Scrolled canvas: ({canvas_x}, {canvas_y})")
+        print(f"PDF coords: ({pdf_x:.1f}, {pdf_y:.1f})")
+        print(f"Checking {len(self.all_boxes)} boxes:")
+        
         # Find clicked box
-        for box in self.all_boxes:
+        for i, box in enumerate(self.all_boxes):
             rect = box["rect"]
+            print(f"  Box {i}: ({rect.x0:.1f}, {rect.y0:.1f}) to ({rect.x1:.1f}, {rect.y1:.1f})")
+            
+            # Check if click is inside this box
             if rect.x0 <= pdf_x <= rect.x1 and rect.y0 <= pdf_y <= rect.y1:
                 self.selected_box = box
+                print(f"  -> SELECTED!")
                 self.status_label.config(
                     text=f"Selected box: {box['width']}x{box['height']} pts. "
                          f"Click 'Replace Boxes' to replace all boxes of this size."
@@ -174,6 +230,7 @@ class PDFBoxReplacer:
                 self.draw_boxes()  # Redraw to highlight selection
                 return
         
+        print("  -> No box found at click location")
         self.status_label.config(text="No box found at click location")
     
     def prev_page(self):
@@ -202,27 +259,85 @@ class PDFBoxReplacer:
         if not text:
             return
         
-        # Ask for output filename
-        output_path = filedialog.asksaveasfilename(
-            title="Save modified PDF as",
-            defaultextension=".pdf",
-            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
-        )
+        # Apply replacements to the current page in memory
+        self.apply_replacements(self.selected_box["width"], 
+                               self.selected_box["height"], 
+                               text)
         
-        if not output_path:
-            return
+        # Reload the page to show changes
+        self.load_page()
         
-        try:
-            count = self.replace_all_matching_boxes(
-                self.selected_box["width"],
-                self.selected_box["height"],
-                text,
-                output_path
-            )
-            messagebox.showinfo("Success", 
-                              f"Replaced {count} boxes.\nSaved to: {output_path}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to replace boxes: {str(e)}")
+        self.status_label.config(text=f"Replaced boxes on page {self.current_page + 1}. "
+                                     "Navigate pages to apply to others. Use File > Save to save changes.")
+
+    def apply_replacements(self, target_width, target_height, text, tolerance=2.0):
+        """Apply replacements to current page by modifying the page image"""
+        page = self.pdf_doc[self.current_page]
+        
+        # Render page to image at high resolution
+        mat = fitz.Matrix(2, 2)
+        pix = page.get_pixmap(matrix=mat)
+        
+        # Convert to PIL Image
+        img_data = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_data))
+        draw = ImageDraw.Draw(img)
+        
+        count = 0
+        # Find matching boxes and draw white rectangles with text
+        for box in self.all_boxes:
+            width = box["width"]
+            height = box["height"]
+            
+            # Check if dimensions match (within tolerance)
+            if abs(width - target_width) <= tolerance and \
+               abs(height - target_height) <= tolerance:
+                
+                rect = box["rect"]
+                # Scale coordinates by 2 (since we rendered at 2x)
+                x0 = rect.x0 * 2
+                y0 = rect.y0 * 2
+                x1 = rect.x1 * 2
+                y1 = rect.y1 * 2
+                
+                # Draw white rectangle
+                draw.rectangle([x0, y0, x1, y1], fill='white', outline='black', width=2)
+                
+                # Add text
+                font_size = int(min(height * 0.6, 12) * 2)  # Scale font size too
+                try:
+                    from PIL import ImageFont
+                    # Try to use a default font
+                    font = ImageFont.truetype("arial.ttf", font_size)
+                except:
+                    font = ImageFont.load_default()
+                
+                # Center the text
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                text_x = x0 + (x1 - x0 - text_width) / 2
+                text_y = y0 + (y1 - y0 - text_height) / 2
+                
+                draw.text((text_x, text_y), text, fill='black', font=font)
+                count += 1
+        
+        if count > 0:
+            # Convert back to bytes
+            img_bytes = io.BytesIO()
+            img.save(img_bytes, format='PNG')
+            img_bytes.seek(0)
+            
+            # Replace the page with the modified image
+            img_pdf = fitz.open("png", img_bytes.read())
+            pdf_bytes = img_pdf.convert_to_pdf()
+            img_pdf.close()
+            
+            # Replace the current page
+            self.pdf_doc.delete_page(self.current_page)
+            self.pdf_doc.insert_pdf(fitz.open("pdf", pdf_bytes), from_page=0, to_page=0, start_at=self.current_page)
+        
+        return count
     
     def replace_all_matching_boxes(self, target_width, target_height, text, output_path, tolerance=2.0):
         """Replace all boxes of matching size across all pages"""
