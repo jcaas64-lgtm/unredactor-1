@@ -1,4 +1,5 @@
 """
+Written by Karac V. Thweatt
 Interactive PDF Black Box Replacer
 Click on a black box to select it, then replace all boxes of that size with white boxes containing text.
 
@@ -22,7 +23,7 @@ from datetime import datetime
 class PDFBoxReplacer:
     def __init__(self, root):
         self.root = root
-        self.root.title("PDF Black Box Replacer")
+        self.root.title("PDF Un-Redactor")
         self.root.geometry("1000x800")
         
         self.pdf_doc = None
