@@ -95,223 +95,144 @@ class PDFBoxReplacer:
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
     def auto_unredact(self):
-        """Automatically process all PDFs in subdirectories, extract text, and create HTML files"""
-        # Ask for input directory
-        input_dir = filedialog.askdirectory(
-            title="Select directory containing PDFs to process"
-        )
-        
-        if not input_dir:
+        from tkinter import filedialog, messagebox
+        import os, re, tkinter as tk
+        from tkinter import ttk
+
+        pdf_dir = filedialog.askdirectory(title="Select PDF Folder")
+        if not pdf_dir:
             return
-        
-        # Ask for output directory
-        output_dir = filedialog.askdirectory(
-            title="Select output directory for HTML files"
-        )
-        
+
+        output_dir = filedialog.askdirectory(title="Select Output Folder")
         if not output_dir:
             return
-        
-        # Create output directory if it doesn't exist
+
         os.makedirs(output_dir, exist_ok=True)
-        
-        css_path = os.path.join(output_dir, "style.css")
-        
-        css = """
-            body {{
-                font-family: Arial, sans-serif;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-                line-height: 1.6;
-                background-color: #f5f5f5;
-            }}
-            .header {{
-                background-color: #2c3e50;
-                color: white;
-                padding: 20px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-            }}
-            .warning {{
-                background-color: #fff3cd;
-                border: 1px solid #ffeaa7;
-                color: #856404;
-                padding: 15px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-            }}
-            .page {{
-                background-color: white;
-                padding: 20px;
-                margin-bottom: 30px;
-                border-radius: 5px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                page-break-inside: avoid;
-            }}
-            .page-header {{
-                background-color: #3498db;
-                color: white;
-                padding: 10px 15px;
-                margin: -20px -20px 20px -20px;
-                border-radius: 5px 5px 0 0;
-                font-weight: bold;
-            }}
-            .page-content {{
-                white-space: pre-wrap;
-                font-family: 'Courier New', monospace;
-                font-size: 12px;
-                line-height: 1.4;
-            }}
-            .navigation {{
-                margin-top: 30px;
-                margin-bottom: 30px;
-            }}
-            .nav-buttons {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }}
-            .nav-button {{
-                padding: 10px 20px;
-                text-decoration: none;
-                border-radius: 5px;
-                font-weight: bold;
-                transition: background-color 0.3s;
-            }}
-            .nav-button.prev {{
-                background-color: #3498db;
-                color: white;
-            }}
-            .nav-button.prev:hover {{
-                background-color: #2980b9;
-            }}
-            .nav-button.home {{
-                background-color: #2c3e50;
-                color: white;
-            }}
-            .nav-button.home:hover {{
-                background-color: #34495e;
-            }}
-            .nav-button.next {{
-                background-color: #27ae60;
-                color: white;
-            }}
-            .nav-button.next:hover {{
-                background-color: #229954;
-            }}
-            .nav-button.disabled {{
-                background-color: #cccccc;
-                color: #666666;
-                cursor: not-allowed;
-            }}
-            .file-info {{
-                background-color: #e8f4fc;
-                padding: 10px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-                font-size: 14px;
-            }}
-            .sequence-info {{
-                background-color: #e8f4fc;
-                padding: 10px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-                font-size: 14px;
-                border-left: 4px solid #3498db;
-            }}
-            """
-        css = css.replace("{{","{").replace("}}","}")
-            
-        with open(css_path, "w") as cssfile:
-            cssfile.seek(0)
-            cssfile.write(css)
-            cssfile.close()
-        
-        # Find all PDF files recursively
+
         pdf_files = []
-        for root_dir, dirs, files in os.walk(input_dir):
+        for root, dirs, files in os.walk(pdf_dir):
             for file in files:
-                if file.lower().endswith('.pdf'):
-                    pdf_files.append(os.path.join(root_dir, file))
-        
+                if file.lower().endswith(".pdf"):
+                    pdf_files.append(os.path.join(root, file))
+
         if not pdf_files:
-            messagebox.showinfo("No PDFs Found", f"No PDF files found in {input_dir}")
+            messagebox.showerror("Error", "No PDF files found")
             return
-        
-        # Create progress window
-        progress_window = tk.Toplevel(self.root)
-        progress_window.title("Auto Unredact Progress")
-        progress_window.geometry("500x150")
-        
-        tk.Label(progress_window, text="Processing PDF files...", font=("Arial", 12)).pack(pady=10)
-        
-        progress_var = tk.DoubleVar()
-        progress_bar = ttk.Progressbar(progress_window, variable=progress_var, maximum=len(pdf_files))
-        progress_bar.pack(fill=tk.X, padx=20, pady=10)
-        
-        status_label = tk.Label(progress_window, text="")
+
+        pdf_files.sort()
+
+        progress_window = tk.Toplevel()
+        progress_window.title("Processing PDFs")
+
+        progress_var = tk.IntVar(value=0)
+        progress_bar = ttk.Progressbar(
+            progress_window,
+            maximum=len(pdf_files),
+            variable=progress_var
+        )
+        progress_bar.pack(fill="x", padx=10, pady=10)
+
+        status_label = ttk.Label(progress_window, text="Starting…")
         status_label.pack(pady=5)
-        
-        # Force window to update
+
         progress_window.update()
-        
+
         html_files = []
         processed_count = 0
         error_count = 0
-        
-        # Process each PDF
+
+        # PASS 1 — Generate HTML
         for i, pdf_path in enumerate(pdf_files):
             try:
-                status_label.config(text=f"Processing: {os.path.basename(pdf_path)}...")
+                status_label.config(text=f"Processing: {os.path.basename(pdf_path)}")
                 progress_window.update()
-                
-                # Extract text from PDF
+
                 text_by_page, ocr_mode = self.extract_text_from_pdf(pdf_path)
-                
-                if text_by_page:
-                    # Create HTML file
-                    html_path = self.create_html_from_text(
-                        pdf_path, text_by_page, ocr_mode, output_dir
-                    )
-                    html_files.append(html_path)
-                    processed_count += 1
-                else:
+                if not text_by_page:
                     error_count += 1
+                    continue
+
+                # FIX: Get actual previous and next files
+                prev_file = None
+                next_file = None
                 
-                # Update progress
+                if i > 0:
+                    prev_pdf = pdf_files[i - 1]
+                    prev_file = os.path.splitext(os.path.basename(prev_pdf))[0] + ".html"
+                
+                if i < len(pdf_files) - 1:
+                    next_pdf = pdf_files[i + 1]
+                    next_file = os.path.splitext(os.path.basename(next_pdf))[0] + ".html"
+
+                html_path = self.create_html_from_text(
+                    pdf_path,
+                    text_by_page,
+                    ocr_mode,
+                    output_dir,
+                    prev_file=prev_file,  # Pass the actual previous file
+                    next_file=next_file   # Pass the actual next file
+                )
+
+                html_files.append(os.path.basename(html_path))
+                processed_count += 1
+
                 progress_var.set(i + 1)
                 progress_window.update()
-                
+
             except Exception as e:
                 error_count += 1
-                print(f"Error processing {pdf_path}: {str(e)}")
-        
-        # Create index.html if we have HTML files
-        if html_files:
-            index_path = self.create_index_html(html_files, output_dir, processed_count, error_count)
-        
-        # Close progress window
-        progress_window.destroy()
-        
-        # Show results
-        result_msg = f"""
-Processing Complete!
-Total PDFs found: {len(pdf_files)}
-Successfully processed: {processed_count}
-Failed: {error_count}
+                print(f"Error processing {pdf_path}: {e}")
 
-HTML files saved to: {output_dir}
-"""
-        if html_files:
-            result_msg += f"Index file: {index_path}"
-        
-        messagebox.showinfo("Auto Unredact Complete", result_msg)
-        
-        # Ask if user wants to open the index file
-        if html_files and messagebox.askyesno("Open Index", "Would you like to open the index file in your browser?"):
-            import webbrowser
-            webbrowser.open(f"file://{index_path}")
+        html_files.sort()
+
+        # PASS 2 — Patch navigation
+        for i, name in enumerate(html_files):
+            path = os.path.join(output_dir, name)
+
+            prev_file = html_files[i - 1] if i > 0 else None
+            next_file = html_files[i + 1] if i < len(html_files) - 1 else None
+
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    html = f.read()
+
+                nav = '<div class="navigation"><div class="nav-buttons">'
+
+                if prev_file:
+                    nav += f'<a href="{prev_file}" class="nav-button prev">← Previous</a>'
+                else:
+                    nav += '<span class="nav-button disabled">← Previous</span>'
+
+                nav += '<a href="index.html" class="nav-button home">Index</a>'
+
+                if next_file:
+                    nav += f'<a href="{next_file}" class="nav-button next">Next →</a>'
+                else:
+                    nav += '<span class="nav-button disabled">Next →</span>'
+
+                nav += '</div></div>'
+
+                html = re.sub(
+                    r'<div class="navigation">.*?</div>\s*</div>',
+                    nav,
+                    html,
+                    flags=re.DOTALL
+                )
+
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(html)
+
+            except Exception as e:
+                print(f"Navigation update failed for {name}: {e}")
+
+        progress_window.destroy()
+
+        messagebox.showinfo(
+            "Done",
+            f"Processed: {processed_count}\nErrors: {error_count}"
+        )
+
+
 
     def extract_text_from_pdf(self, pdf_path):
         """Extract all text from a PDF file"""
@@ -348,55 +269,22 @@ HTML files saved to: {output_dir}
         
         return text_by_page, ocr_mode
 
-    def create_html_from_text(self, pdf_path, text_by_page, ocr_mode, output_dir):
+    def create_html_from_text(self, pdf_path, text_by_page, ocr_mode, output_dir, prev_file=None, next_file=None):
         """Create an HTML file from extracted text with Next/Previous navigation"""
         pdf_name = os.path.basename(pdf_path)
         html_name = os.path.splitext(pdf_name)[0] + ".html"
         html_path = os.path.join(output_dir, html_name)
         
-        # Parse the filename to extract prefix and number
-        base_name = os.path.splitext(pdf_name)[0]
-        
-        # Find the split between letters and numbers
-        split_index = len(base_name)
-        for i, char in enumerate(base_name):
-            if char.isdigit():
-                split_index = i
-                break
-        
-        prefix = base_name[:split_index] if split_index > 0 else ""
-        number_str = base_name[split_index:] if split_index < len(base_name) else ""
-        
-        # Always generate Next and Previous links (even if files don't exist yet)
-        prev_filename = ""
-        next_filename = ""
-        
-        if number_str and number_str.isdigit():
-            # Count total digits and leading zeros
-            total_digits = len(number_str)
-            current_num = int(number_str)
-            
-            # Previous file (current - 1)
-            prev_num = current_num - 1
-            # Preserve the same number of digits with leading zeros
-            prev_num_str = str(prev_num).zfill(total_digits)
-            prev_filename = f"{prefix}{prev_num_str}.html"
-            
-            # Next file (current + 1)
-            next_num = current_num + 1
-            # Preserve the same number of digits with leading zeros
-            next_num_str = str(next_num).zfill(total_digits)
-            next_filename = f"{prefix}{next_num_str}.html"
+        print(prev_file, next_file)
         
         # Create navigation buttons HTML - ALWAYS create them
-        nav_html = ""
         nav_html = """
         <div class="navigation">
             <div class="nav-buttons">
     """
-        if prev_filename:
+        if prev_file:
             # ALWAYS create Previous button, even if file doesn't exist yet
-            nav_html += f"""            <a href="{html.escape(prev_filename)}" class="nav-button prev">← Previous File</a>
+            nav_html += f"""            <a href="{html.escape(prev_file)}" class="nav-button prev">← Previous File</a>
     """
         else:
             nav_html += f"""            <span class="nav-button disabled">← No Previous</span>
@@ -405,9 +293,9 @@ HTML files saved to: {output_dir}
         nav_html += f"""            <a href="index.html" class="nav-button home">Index</a>
     """
         
-        if next_filename:
+        if next_file:
             # ALWAYS create Next button, even if file doesn't exist yet
-            nav_html += f"""            <a href="{html.escape(next_filename)}" class="nav-button next">Next File →</a>
+            nav_html += f"""            <a href="{html.escape(next_file)}" class="nav-button next">Next File →</a>
     """
         else:
             nav_html += f"""            <span class="nav-button disabled">No Next →</span>
@@ -442,14 +330,14 @@ HTML files saved to: {output_dir}
         {nav_html}
         
         <div class="sequence-info">
-            <p><strong>File Sequence:</strong> {html.escape(base_name)}</p>
+            <p><strong>File Sequence:</strong> {html.escape(pdf_name)}</p>
             <p><strong>Adjacent Files:</strong> 
     """
         
-        if prev_filename:
-            html_content += f"""Previous: <code>{html.escape(prev_filename)}</code><br>"""
-        if next_filename:
-            html_content += f"""Next: <code>{html.escape(next_filename)}</code>"""
+        if prev_file:
+            html_content += f"""Previous: <code>{html.escape(prev_file)}</code><br>"""
+        if next_file:
+            html_content += f"""Next: <code>{html.escape(next_file)}</code>"""
         
         html_content += f"""</p>
         </div>
