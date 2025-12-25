@@ -122,8 +122,24 @@ class PDFBoxReplacer:
 
         pdf_files.sort()
 
+        # Check if all files start with EFTA
+        efta_mode = False
+        if pdf_files:
+            # Get just the filenames without paths
+            filenames = [os.path.basename(f) for f in pdf_files]
+            # Check if ALL start with EFTA (case-insensitive)
+            efta_mode = all(fname.upper().startswith('EFTA') for fname in filenames)
+
+        # Then when creating the progress window:
+        if efta_mode:
+            window_title = "Processing pedo-files..."
+            status_text = "Processing pedo-files..."
+        else:
+            window_title = "Processing PDFs"
+            status_text = "Starting…"
+
         progress_window = tk.Toplevel()
-        progress_window.title("Processing PDFs")
+        progress_window.title(window_title)
 
         progress_var = tk.IntVar(value=0)
         progress_bar = ttk.Progressbar(
@@ -133,7 +149,7 @@ class PDFBoxReplacer:
         )
         progress_bar.pack(fill="x", padx=10, pady=10)
 
-        status_label = ttk.Label(progress_window, text="Starting…")
+        status_label = ttk.Label(progress_window, text=status_text)
         status_label.pack(pady=5)
 
         progress_window.update()
@@ -145,7 +161,10 @@ class PDFBoxReplacer:
         # PASS 1 — Generate HTML
         for i, pdf_path in enumerate(pdf_files):
             try:
-                status_label.config(text=f"Processing: {os.path.basename(pdf_path)}")
+                if efta_mode:
+                    status_label.config(text=f"Processing pedo-file: {os.path.basename(pdf_path)}")
+                else:
+                    status_label.config(text=f"Processing: {os.path.basename(pdf_path)}")
                 progress_window.update()
 
                 text_by_page, ocr_mode = self.extract_text_from_pdf(pdf_path)
@@ -232,6 +251,32 @@ class PDFBoxReplacer:
             "Done",
             f"Processed: {processed_count}\nErrors: {error_count}"
         )
+
+        # Create index.html if we have HTML files
+        if html_files:
+            index_path = self.create_index_html(html_files, output_dir, processed_count, error_count)
+        
+        # Close progress window
+        progress_window.destroy()
+        
+        # Show results
+        result_msg = f"""
+Processing Complete!
+Total PDFs found: {len(pdf_files)}
+Successfully processed: {processed_count}
+Failed: {error_count}
+
+HTML files saved to: {output_dir}
+"""
+        if html_files:
+            result_msg += f"Index file: {index_path}"
+        
+        messagebox.showinfo("Auto Unredact Complete", result_msg)
+        
+        # Ask if user wants to open the index file
+        if html_files and messagebox.askyesno("Open Index", "Would you like to open the index file in your browser?"):
+            import webbrowser
+            webbrowser.open(f"file://{index_path}")
 
 
 
@@ -398,12 +443,14 @@ class PDFBoxReplacer:
                 return (prefix, int(number_str))
             return (base_name, 0)
         
-        html_files.sort(key=lambda x: get_sequence_key(os.path.basename(x)))
+        # Make sure we're working with basenames
+        html_files = [os.path.basename(f) for f in html_files]
+        html_files.sort(key=lambda x: get_sequence_key(x))
         
         # Group files by prefix
         file_groups = {}
         for html_file in html_files:
-            filename = os.path.basename(html_file)
+            filename = html_file
             base_name = os.path.splitext(filename)[0]
             
             # Find the split between letters and numbers
@@ -417,9 +464,12 @@ class PDFBoxReplacer:
             
             if prefix not in file_groups:
                 file_groups[prefix] = []
+            
+            # Store full path for file operations
+            full_path = os.path.join(output_dir, filename)
             file_groups[prefix].append({
                 'filename': filename,
-                'path': html_file,
+                'full_path': full_path,
                 'basename': base_name
             })
         
@@ -431,108 +481,108 @@ class PDFBoxReplacer:
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Extracted PDF Text - Index</title>
         <style>
-            body {{
-                font-family: Arial, sans-serif;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-                line-height: 1.6;
-                background-color: #f5f5f5;
-            }}
-            .header {{
-                background-color: #2c3e50;
-                color: white;
-                padding: 20px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-            }}
-            .stats {{
-                background-color: #e8f4fc;
-                padding: 15px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-                display: flex;
-                justify-content: space-between;
-                flex-wrap: wrap;
-            }}
-            .stat-box {{
-                background-color: white;
-                padding: 10px 20px;
-                border-radius: 5px;
-                margin: 5px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }}
-            .group {{
-                background-color: white;
-                padding: 20px;
-                border-radius: 5px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                margin-bottom: 30px;
-            }}
-            .group-header {{
-                background-color: #3498db;
-                color: white;
-                padding: 10px 15px;
-                margin: -20px -20px 20px -20px;
-                border-radius: 5px 5px 0 0;
-                font-weight: bold;
-                font-size: 18px;
-            }}
-            .file-list {{
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-                gap: 15px;
-            }}
-            .file-item {{
-                padding: 15px;
-                border: 1px solid #eee;
-                border-radius: 5px;
-                background-color: #f8f9fa;
-                transition: transform 0.2s, box-shadow 0.2s;
-            }}
-            .file-item:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                background-color: #e8f4fc;
-            }}
-            .file-name {{
-                font-weight: bold;
-                color: #2c3e50;
-                font-size: 16px;
-                margin-bottom: 5px;
-            }}
-            .view-link {{
-                display: inline-block;
-                background-color: #27ae60;
-                color: white;
-                padding: 8px 15px;
-                text-decoration: none;
-                border-radius: 3px;
-                font-size: 14px;
-                margin-top: 10px;
-            }}
-            .view-link:hover {{
-                background-color: #229954;
-            }}
-            .timestamp {{
-                color: #666;
-                font-size: 12px;
-            }}
-            .sequence-nav {{
-                display: flex;
-                justify-content: space-between;
-                margin-top: 15px;
-                font-size: 12px;
-                color: #666;
-            }}
-            .nav-hint {{
-                background-color: #f8f9fa;
-                padding: 10px;
-                border-radius: 5px;
-                margin-bottom: 20px;
-                border-left: 4px solid #27ae60;
-                font-size: 14px;
-            }}
+        body {{
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }}
+        .header {{
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }}
+        .stats {{
+            background-color: #e8f4fc;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }}
+        .stat-box {{
+            background-color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }}
+        .group {{
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }}
+        .group-header {{
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            margin: -20px -20px 20px -20px;
+            border-radius: 5px 5px 0 0;
+            font-weight: bold;
+            font-size: 18px;
+        }}
+        .file-list {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }}
+        .file-item {{
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }}
+        .file-item:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            background-color: #e8f4fc;
+        }}
+        .file-name {{
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }}
+        .view-link {{
+            display: inline-block;
+            background-color: #27ae60;
+            color: white;
+            padding: 8px 15px;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 14px;
+            margin-top: 10px;
+        }}
+        .view-link:hover {{
+            background-color: #229954;
+        }}
+        .timestamp {{
+            color: #666;
+            font-size: 12px;
+        }}
+        .sequence-nav {{
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            font-size: 12px;
+            color: #666;
+        }}
+        .nav-hint {{
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #27ae60;
+            font-size: 14px;
+        }}
         </style>
     </head>
     <body>
@@ -577,8 +627,15 @@ class PDFBoxReplacer:
             
             for i, file_info in enumerate(files):
                 file_name = file_info['filename']
-                file_size = os.path.getsize(file_info['path'])
-                modified_time = datetime.fromtimestamp(os.path.getmtime(file_info['path'])).strftime('%Y-%m-%d %H:%M')
+                file_path = file_info['full_path']
+                
+                # Get file stats (with error handling in case file doesn't exist)
+                try:
+                    file_size = os.path.getsize(file_path)
+                    modified_time = datetime.fromtimestamp(os.path.getmtime(file_path)).strftime('%Y-%m-%d %H:%M')
+                except (FileNotFoundError, OSError):
+                    file_size = 0
+                    modified_time = "N/A"
                 
                 # Determine next/previous in sequence for this group
                 prev_in_group = files[i-1]['filename'] if i > 0 else None
@@ -594,18 +651,18 @@ class PDFBoxReplacer:
     """
                 
                 if prev_in_group or next_in_group:
-                    html_content += f"""                <div class="sequence-nav">
+                    html_content += f"""            <div class="sequence-nav">
     """
                     if prev_in_group:
-                        html_content += f"""                    <span>← {html.escape(prev_in_group)}</span>
+                        html_content += f"""                <span>← {html.escape(prev_in_group)}</span>
     """
                     if next_in_group:
-                        html_content += f"""                    <span>{html.escape(next_in_group)} →</span>
+                        html_content += f"""                <span>{html.escape(next_in_group)} →</span>
     """
-                    html_content += """                </div>
+                    html_content += """            </div>
     """
                 
-                html_content += f"""                <a href="{html.escape(file_name)}" class="view-link">View Extracted Text</a>
+                html_content += f"""            <a href="{html.escape(file_name)}" class="view-link">View Extracted Text</a>
                 </div>
     """
             
