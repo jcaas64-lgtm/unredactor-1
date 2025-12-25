@@ -7,6 +7,9 @@ What it **does** do is allow you to **write over** a redaction box. Like white-o
 
 You can select a redaction box, and select all of the exact dimensions and replace at once.
 
+# PLEASE STAR + SHARE THIS TOOL  
+It really helps get this in the hands of more people.
+
 I am not responsible for your use of this tool.
 
 Republishing altered documents is illegal, and you should not use this to do so.
